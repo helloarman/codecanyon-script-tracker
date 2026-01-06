@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeCanyon Tracker</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Remix Icon (CSS based, no JS conflict) -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #f3f4f6;
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- Icons (Remix Icon Mapping) ---
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const iconMap = {
+                'bar-chart-3': 'ri-bar-chart-box-line',
+                'link': 'ri-link',
+                'loader-2': 'ri-loader-4-line',
+                'refresh-cw': 'ri-refresh-line',
+                'search': 'ri-search-line',
+                'image': 'ri-image-line',
+                'user': 'ri-user-line',
+                'trash-2': 'ri-delete-bin-line',
+                'alert-circle': 'ri-error-warning-line'
+            };
+
+            const remixClass = iconMap[name] || 'ri-question-line';
+            
+            return (
+                <i 
+                    className={`${remixClass} ${className} leading-none`} 
+                    style={{ fontSize: `${size}px` }}
+                ></i>
+            );
+        };
+
+        // --- Helper Functions ---
+
+        // --- Scraping Progress Modal Component ---
+        const ScrapingModal = ({ isOpen, progress, onClose }) => {
+            if (!isOpen) return null;
+            
+            const stages = [
+                { key: 'connecting', label: 'Connecting to proxy...', icon: 'ri-wifi-line' },
+                { key: 'fetching', label: 'Fetching page content...', icon: 'ri-download-cloud-line' },
+                { key: 'parsing', label: 'Parsing HTML...', icon: 'ri-code-s-slash-line' },
+                { key: 'title', label: 'Extracting title...', icon: 'ri-h-1' },
+                { key: 'price', label: 'Extracting price...', icon: 'ri-money-dollar-circle-line' },
+                { key: 'sales', label: 'Extracting sales count...', icon: 'ri-shopping-cart-line' },
+                { key: 'image', label: 'Getting product image...', icon: 'ri-image-line' },
+                { key: 'author', label: 'Finding author...', icon: 'ri-user-line' },
+                { key: 'complete', label: 'Complete!', icon: 'ri-check-double-line' }
+            ];
+            
+            const getStageStatus = (stageKey) => {
+                const stageIndex = stages.findIndex(s => s.key === stageKey);
+                const currentIndex = stages.findIndex(s => s.key === progress.stage);
+                
+                if (stageIndex < currentIndex) return 'done';
+                if (stageIndex === currentIndex) return 'active';
+                return 'pending';
+            };
+            
+            return (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                                    <i className="ri-radar-line animate-pulse"></i>
+                                    Scraping in Progress
+                                </h3>
+                                {progress.stage === 'complete' && (
+                                    <button onClick={onClose} className="text-white/80 hover:text-white">
+                                        <i className="ri-close-line text-xl"></i>
+                                    </button>
+                                )}
+                            </div>
+                            <p className="text-emerald-100 text-sm mt-1 truncate">{progress.url}</p>
+                        </div>
+                        
+                        {/* Progress Steps */}
+                        <div className="p-6 space-y-3 max-h-80 overflow-y-auto">
+                            {stages.map((stage, idx) => {
+                                const status = getStageStatus(stage.key);
+                                const value = progress.values?.[stage.key];
+                                
+                                return (
+                                    <div key={stage.key} 
+                                        className={`flex items-start gap-3 p-3 rounded-lg transition-all duration-300
+                                            ${status === 'active' ? 'bg-emerald-50 border border-emerald-200 shadow-sm' : ''}
+                                            ${status === 'done' ? 'bg-gray-50' : ''}
+                                            ${status === 'pending' ? 'opacity-40' : ''}`}
+                                    >
+                                        {/* Icon */}
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
+                                            ${status === 'done' ? 'bg-emerald-500 text-white' : ''}
+                                            ${status === 'active' ? 'bg-emerald-100 text-emerald-600' : ''}
+                                            ${status === 'pending' ? 'bg-gray-200 text-gray-400' : ''}`}
+                                        >
+                                            {status === 'done' ? (
+                                                <i className="ri-check-line"></i>
+                                            ) : status === 'active' ? (
+                                                <i className={`${stage.icon} animate-pulse`}></i>
+                                            ) : (
+                                                <i className={stage.icon}></i>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className={`font-medium text-sm
+                                                ${status === 'done' ? 'text-gray-700' : ''}
+                                                ${status === 'active' ? 'text-emerald-700' : ''}
+                                                ${status === 'pending' ? 'text-gray-400' : ''}`}
+                                            >
+                                                {stage.label}
+                                            </div>
+                                            
+                                            {/* Show extracted value */}
+                                            {status === 'done' && value !== undefined && value !== null && (
+                                                <div className="text-xs text-emerald-600 mt-1 truncate font-mono bg-emerald-50 px-2 py-1 rounded">
+                                                    {typeof value === 'string' && value.length > 50 
+                                                        ? value.substring(0, 50) + '...' 
+                                                        : String(value)}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Error message */}
+                                            {status === 'active' && progress.error && (
+                                                <div className="text-xs text-red-500 mt-1">
+                                                    {progress.error}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        
+                        {/* Footer with result summary */}
+                        {progress.stage === 'complete' && progress.result && (
+                            <div className="border-t bg-gray-50 px-6 py-4">
+                                <div className="flex items-center gap-4 text-sm">
+                                    <div className="flex-1">
+                                        <div className="text-gray-500">Sales</div>
+                                        <div className="font-bold text-emerald-600 text-lg">{progress.result.sales}</div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="text-gray-500">Price</div>
+                                        <div className="font-bold text-blue-600 text-lg">${progress.result.price}</div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="text-gray-500">Revenue</div>
+                                        <div className="font-bold text-gray-700 text-lg">
+                                            ${(progress.result.sales * progress.result.price).toLocaleString()}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Error state */}
+                        {progress.error && progress.stage !== 'complete' && (
+                            <div className="border-t bg-red-50 px-6 py-4">
+                                <div className="flex items-center gap-2 text-red-600">
+                                    <i className="ri-error-warning-line"></i>
+                                    <span className="text-sm font-medium">{progress.error}</span>
+                                </div>
+                                <button 
+                                    onClick={onClose}
+                                    className="mt-3 w-full py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const fetchScriptData = async (url, onProgress = () => {}) => {
+            // Array of proxy strategies to try in order
+            const proxies = [
+                {
+                    name: 'allorigins',
+                    url: (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+                    extract: async (res) => {
+                        const data = await res.json();
+                        if (!data.contents) throw new Error("No content");
+                        return data.contents;
+                    }
+                },
+                {
+                    name: 'codetabs',
+                    url: (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+                    extract: async (res) => await res.text()
+                },
+                {
+                    name: 'corsproxy',
+                    url: (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+                    extract: async (res) => await res.text()
+                }
+            ];
+
+            let htmlContent = null;
+            let lastError = null;
+            const values = {};
+
+            // Stage 1: Connecting
+            onProgress({ stage: 'connecting', values });
+            await new Promise(r => setTimeout(r, 300));
+
+            // Try proxies sequentially
+            for (const proxy of proxies) {
+                try {
+                    console.log(`Attempting fetch via ${proxy.name}...`);
+                    onProgress({ stage: 'fetching', values, message: `Trying ${proxy.name}...` });
+                    
+                    const response = await fetch(proxy.url(url));
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    htmlContent = await proxy.extract(response);
+                    
+                    if (!htmlContent || !htmlContent.includes('<html')) {
+                         if (htmlContent.length < 500) throw new Error("Invalid content received");
+                    }
+                    
+                    values.fetching = `✓ via ${proxy.name}`;
+                    console.log(`Success via ${proxy.name}`);
+                    break; // Success
+                } catch (err) {
+                    console.warn(`Proxy ${proxy.name} failed:`, err);
+                    lastError = err;
+                }
+            }
+
+            if (!htmlContent) {
+                throw lastError || new Error("Failed to fetch data from all available proxies.");
+            }
+
+            try {
+                // Stage 2: Parsing
+                onProgress({ stage: 'parsing', values });
+                await new Promise(r => setTimeout(r, 200));
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlContent, 'text/html');
+                values.parsing = '✓ HTML parsed';
+
+                // Stage 3: Get Title
+                onProgress({ stage: 'title', values });
+                await new Promise(r => setTimeout(r, 150));
+                
+                const titleEl = doc.querySelector('h1.t-heading');
+                const title = titleEl ? titleEl.innerText.trim() : "Unknown Script";
+                values.title = title;
+
+                // Stage 4: Get Price - Multiple selectors with JSON-LD fallback
+                onProgress({ stage: 'price', values });
+                await new Promise(r => setTimeout(r, 150));
+                
+                let price = 0;
+                
+                // Try JSON-LD structured data first (most reliable)
+                const jsonLdScripts = doc.querySelectorAll('script[type="application/ld+json"]');
+                for (const script of jsonLdScripts) {
+                    try {
+                        const data = JSON.parse(script.textContent);
+                        if (data['@type'] === 'Product' && data.offers?.price) {
+                            price = parseFloat(data.offers.price);
+                            values.price = `$${price} (from JSON-LD)`;
+                            break;
+                        }
+                    } catch (e) {}
+                }
+                
+                // Fallback to DOM selectors
+                if (!price) {
+                    const priceSelectors = [
+                        '.js-adi__item-sale-price',
+                        '.adi__item-sale-price', 
+                        '.js-purchase-price',
+                        '.purchase-form__price .t-currency',
+                        'meta[itemprop="price"]'
+                    ];
+                    
+                    for (const selector of priceSelectors) {
+                        const el = doc.querySelector(selector);
+                        if (el) {
+                            const priceText = el.tagName === 'META' ? el.content : el.innerText;
+                            const cleaned = priceText.replace(/[^0-9.]/g, '');
+                            if (cleaned && parseFloat(cleaned) > 0) {
+                                price = parseFloat(cleaned);
+                                values.price = `$${price}`;
+                                break; 
+                            }
+                        }
+                    }
+                }
+                
+                if (!values.price) values.price = price > 0 ? `$${price}` : 'Not found';
+
+                // Stage 5: Get Sales Count
+                onProgress({ stage: 'sales', values });
+                await new Promise(r => setTimeout(r, 150));
+                
+                let sales = 0;
+                const salesWrapper = doc.querySelector('.item-header__sales-count');
+                
+                if (salesWrapper) {
+                    // Method A: Look for the strong tag inside
+                    const strongTag = salesWrapper.querySelector('strong');
+                    if (strongTag) {
+                        const salesText = strongTag.innerText.replace(/[^0-9]/g, '');
+                        if (salesText) {
+                            sales = parseInt(salesText, 10);
+                        }
+                    } 
+                    
+                    // Method B: Parse the whole text
+                    if (!sales) {
+                        const salesText = salesWrapper.innerText.replace(/[^0-9]/g, '');
+                        if (salesText) {
+                            sales = parseInt(salesText, 10);
+                        }
+                    }
+                }
+                
+                values.sales = sales > 0 ? `${sales} sales` : 'Not found';
+
+                // Stage 6: Get Image
+                onProgress({ stage: 'image', values });
+                await new Promise(r => setTimeout(r, 150));
+                
+                const imageEl = doc.querySelector('meta[property="og:image"]');
+                const image = imageEl ? imageEl.content : null;
+                values.image = image ? '✓ Found' : 'Not found';
+
+                // Stage 7: Get Author
+                onProgress({ stage: 'author', values });
+                await new Promise(r => setTimeout(r, 150));
+                
+                const authorEl = doc.querySelector('a.js-by-author');
+                const author = authorEl ? authorEl.innerText.trim() : "Unknown Author";
+                values.author = author;
+
+                // Complete!
+                const result = {
+                    title,
+                    price: price || 0,
+                    sales: sales || 0,
+                    image,
+                    author,
+                    lastUpdated: new Date().toISOString()
+                };
+                
+                onProgress({ stage: 'complete', values, result });
+                
+                return result;
+
+            } catch (error) {
+                console.error("Parsing error:", error);
+                throw error;
+            }
+        };
+
+        // --- Components ---
+
+        const Card = ({ children, className = "" }) => (
+            <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${className}`}>
+                {children}
+            </div>
+        );
+
+        const Button = ({ children, onClick, variant = 'primary', isLoading = false, className = "" }) => {
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+            const variants = {
+                primary: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200",
+                secondary: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200",
+                danger: "bg-red-50 hover:bg-red-100 text-red-600 border border-red-100",
+                ghost: "text-gray-500 hover:text-gray-700 hover:bg-gray-100 border-transparent"
+            };
+
+            return (
+                <button 
+                    onClick={onClick} 
+                    disabled={isLoading}
+                    className={`${baseStyle} ${variants[variant]} ${className}`}
+                >
+                    {isLoading && <Icon name="loader-2" className="animate-spin" size={18} />}
+                    {children}
+                </button>
+            );
+        };
+
+        const SalesChart = ({ data }) => {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current) return;
+
+                const ctx = canvasRef.current.getContext('2d');
+
+                // Destroy previous instance if exists to avoid memory leaks/glitches
+                if (chartRef.current) {
+                    chartRef.current.destroy();
+                }
+
+                chartRef.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => d.date),
+                        datasets: [
+                            {
+                                label: 'Sales',
+                                data: data.map(d => d.sales),
+                                borderColor: '#059669', // Emerald 600
+                                backgroundColor: '#059669',
+                                yAxisID: 'y',
+                                tension: 0.3,
+                                pointRadius: 3,
+                                pointHoverRadius: 5
+                            },
+                            {
+                                label: 'Price ($)',
+                                data: data.map(d => d.price),
+                                borderColor: '#2563eb', // Blue 600
+                                backgroundColor: '#2563eb',
+                                yAxisID: 'y1',
+                                tension: 0.3,
+                                borderDash: [5, 5],
+                                pointRadius: 0,
+                                pointHoverRadius: 3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 8
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                titleColor: '#111827', // Gray 900
+                                bodyColor: '#4b5563', // Gray 600
+                                borderColor: '#e5e7eb', // Gray 200
+                                borderWidth: 1,
+                                padding: 10,
+                                displayColors: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            if (context.dataset.yAxisID === 'y1') {
+                                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                            } else {
+                                                label += context.parsed.y;
+                                            }
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    font: { size: 10 }
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: { display: false, text: 'Sales' },
+                                grid: {
+                                    borderDash: [4, 4],
+                                    color: '#f3f4f6'
+                                },
+                                ticks: {
+                                    precision: 0
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                                ticks: {
+                                    callback: (value) => '$' + value
+                                }
+                            },
+                        }
+                    }
+                });
+
+                return () => {
+                    if (chartRef.current) {
+                        chartRef.current.destroy();
+                    }
+                };
+            }, [data]);
+
+            return <canvas ref={canvasRef} />;
+        };
+
+        const ScriptCard = ({ script, onUpdate, onDelete }) => {
+            const [isUpdating, setIsUpdating] = useState(false);
+            const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'chart'
+
+            const handleUpdate = async () => {
+                setIsUpdating(true);
+                await onUpdate(script.id, script.url);
+                setIsUpdating(false);
+            };
+
+            const latestLog = script.history[script.history.length - 1] || {};
+            const previousLog = script.history[script.history.length - 2] || {};
+            
+            const salesDiff = (latestLog.sales || 0) - (previousLog.sales || 0);
+            const revenue = (latestLog.sales * latestLog.price).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+            // Prepare chart data
+            const chartData = script.history.map(log => ({
+                date: new Date(log.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                sales: log.sales,
+                price: log.price
+            })).slice(-15); // Show last 15 entries
+
+            return (
+                <Card className="flex flex-col h-full hover:shadow-md transition-shadow">
+                    <div className="p-4 border-b border-gray-100 flex gap-4 items-start">
+                        <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200">
+                            {script.image ? (
+                                <img src={script.image} alt={script.title} className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-gray-300">
+                                    <Icon name="image" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-gray-900 truncate text-lg" title={script.title}>{script.title}</h3>
+                            <p className="text-sm text-gray-500 flex items-center gap-1">
+                                <Icon name="user" size={14} /> {script.author}
+                            </p>
+                            <a href={script.url} target="_blank" className="text-xs text-blue-500 hover:underline mt-1 inline-block truncate w-full">
+                                View on CodeCanyon
+                            </a>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Button variant="ghost" onClick={onDelete} className="!p-2 text-gray-400 hover:text-red-500">
+                                <Icon name="trash-2" size={18} />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-50 border-b border-gray-100 flex">
+                        <button 
+                            className={`flex-1 py-2 text-sm font-medium ${activeTab === 'overview' ? 'text-emerald-600 bg-white border-t-2 border-emerald-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            onClick={() => setActiveTab('overview')}
+                        >
+                            Overview
+                        </button>
+                        <button 
+                            className={`flex-1 py-2 text-sm font-medium ${activeTab === 'chart' ? 'text-emerald-600 bg-white border-t-2 border-emerald-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            onClick={() => setActiveTab('chart')}
+                        >
+                            History Graph
+                        </button>
+                    </div>
+
+                    <div className="p-4 flex-1">
+                        {activeTab === 'overview' ? (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+                                    <div className="text-xs text-emerald-600 uppercase font-semibold">Total Sales</div>
+                                    <div className="text-2xl font-bold text-emerald-900 flex items-end gap-2">
+                                        {latestLog.sales}
+                                        {salesDiff > 0 && <span className="text-xs text-emerald-600 mb-1">+{salesDiff}</span>}
+                                    </div>
+                                </div>
+                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                    <div className="text-xs text-blue-600 uppercase font-semibold">Current Price</div>
+                                    <div className="text-2xl font-bold text-blue-900">${latestLog.price}</div>
+                                </div>
+                                <div className="col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-100 flex justify-between items-center">
+                                    <div>
+                                        <div className="text-xs text-gray-500 uppercase font-semibold">Est. Gross Revenue</div>
+                                        <div className="text-lg font-bold text-gray-700">{revenue}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-xs text-gray-400">Last Checked</div>
+                                        <div className="text-xs text-gray-600 font-medium">
+                                            {latestLog.date ? new Date(latestLog.date).toLocaleString() : 'Never'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-48 w-full relative">
+                                <SalesChart data={chartData} />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="p-4 pt-0 mt-auto">
+                        <Button variant="secondary" className="w-full" onClick={handleUpdate} isLoading={isUpdating}>
+                            {isUpdating ? 'Updating...' : 'Check Now'}
+                        </Button>
+                    </div>
+                </Card>
+            );
+        };
+
+        const App = () => {
+            const [scripts, setScripts] = useState(() => {
+                const saved = localStorage.getItem('cc_tracker_scripts');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [newUrl, setNewUrl] = useState('');
+            const [isAdding, setIsAdding] = useState(false);
+            const [error, setError] = useState(null);
+            
+            // Scraping modal state
+            const [scrapingModal, setScrapingModal] = useState({ 
+                isOpen: false, 
+                progress: { stage: 'connecting', values: {}, url: '' } 
+            });
+            
+            // Extension integration state
+            const [extensionAvailable, setExtensionAvailable] = useState(false);
+            const [isPulling, setIsPulling] = useState(false);
+            const [pullMessage, setPullMessage] = useState(null);
+
+            useEffect(() => {
+                localStorage.setItem('cc_tracker_scripts', JSON.stringify(scripts));
+            }, [scripts]);
+            
+            // Check for extension via localStorage (set by content script)
+            useEffect(() => {
+                const checkExtension = () => {
+                    const ready = localStorage.getItem('cc_extension_ready');
+                    if (ready === 'true') {
+                        setExtensionAvailable(true);
+                    }
+                };
+                
+                // Check immediately
+                checkExtension();
+                
+                // Also check after delays
+                const t1 = setTimeout(checkExtension, 1000);
+                const t2 = setTimeout(checkExtension, 3000);
+                
+                // Listen for sync events from extension
+                const handleSync = (e) => {
+                    setExtensionAvailable(true);
+                    console.log('Extension synced:', e.detail);
+                };
+                window.addEventListener('cc_extension_synced', handleSync);
+                
+                return () => {
+                    clearTimeout(t1);
+                    clearTimeout(t2);
+                    window.removeEventListener('cc_extension_synced', handleSync);
+                };
+            }, []);
+            
+            const pullFromExtension = () => {
+                setIsPulling(true);
+                setPullMessage(null);
+                
+                // Request fresh sync from extension
+                window.dispatchEvent(new Event('cc_request_sync'));
+                
+                // Wait a moment then read from localStorage
+                setTimeout(() => {
+                    try {
+                        const extDataStr = localStorage.getItem('cc_extension_scripts');
+                        const isReady = localStorage.getItem('cc_extension_ready') === 'true';
+                        
+                        if (!isReady) {
+                            setPullMessage({ type: 'error', text: 'Extension not detected. Install it, enable "Allow access to file URLs", and reload.' });
+                            setIsPulling(false);
+                            setTimeout(() => setPullMessage(null), 5000);
+                            return;
+                        }
+                        
+                        const extScripts = extDataStr ? JSON.parse(extDataStr) : [];
+                        
+                        if (extScripts.length > 0) {
+                            // Merge with existing scripts
+                            setScripts(prev => {
+                                const merged = [...prev];
+                                extScripts.forEach(extScript => {
+                                    const existingIdx = merged.findIndex(s => s.url === extScript.url);
+                                    if (existingIdx >= 0) {
+                                        // Merge history
+                                        const existingDates = new Set(merged[existingIdx].history.map(h => h.date));
+                                        const newHistory = extScript.history.filter(h => !existingDates.has(h.date));
+                                        merged[existingIdx].history = [...merged[existingIdx].history, ...newHistory];
+                                        merged[existingIdx].title = extScript.title;
+                                        merged[existingIdx].image = extScript.image;
+                                    } else {
+                                        merged.unshift(extScript);
+                                    }
+                                });
+                                return merged;
+                            });
+                            setPullMessage({ type: 'success', text: `Pulled ${extScripts.length} script(s) from extension!` });
+                        } else {
+                            setPullMessage({ type: 'info', text: 'No scripts in extension yet. Go to CodeCanyon, extract some data first!' });
+                        }
+                    } catch (err) {
+                        console.error('Pull error:', err);
+                        setPullMessage({ type: 'error', text: 'Error reading extension data: ' + err.message });
+                    }
+                    
+                    setIsPulling(false);
+                    setTimeout(() => setPullMessage(null), 4000);
+                }, 500);
+            };
+            
+            const closeScrapingModal = () => {
+                setScrapingModal(prev => ({ ...prev, isOpen: false }));
+            };
+
+            const addScript = async (e) => {
+                e.preventDefault();
+                if (!newUrl) return;
+                
+                // Simple validation
+                if (!newUrl.includes('codecanyon.net')) {
+                    setError("Please enter a valid CodeCanyon URL");
+                    return;
+                }
+
+                setIsAdding(true);
+                setError(null);
+                
+                // Open the scraping modal
+                setScrapingModal({
+                    isOpen: true,
+                    progress: { stage: 'connecting', values: {}, url: newUrl }
+                });
+
+                try {
+                    const data = await fetchScriptData(newUrl, (progress) => {
+                        setScrapingModal(prev => ({
+                            ...prev,
+                            progress: { ...progress, url: newUrl }
+                        }));
+                    });
+                    
+                    const newScript = {
+                        id: Date.now().toString(),
+                        url: newUrl,
+                        title: data.title,
+                        image: data.image,
+                        author: data.author,
+                        history: [
+                            {
+                                date: new Date().toISOString(),
+                                sales: data.sales,
+                                price: data.price
+                            }
+                        ]
+                    };
+
+                    setScripts(prev => [newScript, ...prev]);
+                    setNewUrl('');
+                    
+                    // Auto-close modal after 2 seconds on success
+                    setTimeout(() => {
+                        closeScrapingModal();
+                    }, 2000);
+                    
+                } catch (err) {
+                    setScrapingModal(prev => ({
+                        ...prev,
+                        progress: { ...prev.progress, error: err.message }
+                    }));
+                    setError(`Error: ${err.message}. The proxy might be busy or the URL is invalid.`);
+                } finally {
+                    setIsAdding(false);
+                }
+            };
+
+            const updateScript = async (id, url) => {
+                // Open modal for updates too
+                setScrapingModal({
+                    isOpen: true,
+                    progress: { stage: 'connecting', values: {}, url: url }
+                });
+                
+                try {
+                    const data = await fetchScriptData(url, (progress) => {
+                        setScrapingModal(prev => ({
+                            ...prev,
+                            progress: { ...progress, url: url }
+                        }));
+                    });
+                    
+                    setScripts(prev => prev.map(script => {
+                        if (script.id !== id) return script;
+                        
+                        const newEntry = {
+                            date: new Date().toISOString(),
+                            sales: data.sales,
+                            price: data.price
+                        };
+
+                        return {
+                            ...script,
+                            title: data.title,
+                            image: data.image,
+                            history: [...script.history, newEntry]
+                        };
+                    }));
+                    
+                    // Auto-close modal after 2 seconds on success
+                    setTimeout(() => {
+                        closeScrapingModal();
+                    }, 2000);
+                    
+                } catch (err) {
+                    setScrapingModal(prev => ({
+                        ...prev,
+                        progress: { ...prev.progress, error: err.message }
+                    }));
+                    alert("Failed to update script. Please try again.");
+                }
+            };
+
+            const deleteScript = (id) => {
+                if (confirm("Are you sure you want to remove this script from tracking?")) {
+                    setScripts(prev => prev.filter(s => s.id !== id));
+                }
+            };
+
+            const updateAll = async () => {
+                const promises = scripts.map(s => updateScript(s.id, s.url));
+                await Promise.all(promises);
+            };
+
+            return (
+                <div className="min-h-screen pb-12">
+                    {/* Scraping Progress Modal */}
+                    <ScrapingModal 
+                        isOpen={scrapingModal.isOpen} 
+                        progress={scrapingModal.progress} 
+                        onClose={closeScrapingModal} 
+                    />
+                    
+                    {/* Header */}
+                    <div className="bg-slate-900 text-white py-8 px-4 shadow-lg mb-8">
+                        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div>
+                                <h1 className="text-3xl font-bold flex items-center gap-3">
+                                    <Icon name="bar-chart-3" className="text-emerald-400" />
+                                    CC Tracker
+                                </h1>
+                                <p className="text-slate-400 mt-1">Smart CodeCanyon Sales & Price Monitor</p>
+                            </div>
+                            <div className="bg-slate-800 p-1 rounded-lg flex text-sm">
+                                <div className="px-3 py-1 bg-slate-700 rounded text-white font-medium shadow">
+                                    {scripts.length} Scripts Tracked
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-6xl mx-auto px-4">
+                        {/* Script Grid */}
+                        {scripts.length === 0 ? (
+                            <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+                                <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <i className="ri-puzzle-line text-purple-500 text-3xl"></i>
+                                </div>
+                                <h3 className="text-lg font-medium text-gray-900">No scripts tracked yet</h3>
+                                <p className="text-gray-500 mt-1 max-w-md mx-auto">
+                                    Use the <strong>CodeCanyon Tracker</strong> extension to extract scripts from CodeCanyon, 
+                                    then click <strong>"Export Data to Dashboard"</strong> to see them here.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {scripts.map(script => (
+                                    <ScriptCard 
+                                        key={script.id} 
+                                        script={script} 
+                                        onUpdate={updateScript} 
+                                        onDelete={() => deleteScript(script.id)}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

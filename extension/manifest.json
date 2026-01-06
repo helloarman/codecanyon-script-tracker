@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "CodeCanyon Tracker",
+  "description": "Extract CodeCanyon script data and sync with your dashboard",
+  "version": "1.0.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CodeCanyon Tracker"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://codecanyon.net/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "file:///*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*", "file:///*"],
+      "js": ["content.js"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

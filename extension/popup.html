@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeCanyon Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 340px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #fff;
+    }
+    
+    .header {
+      padding: 16px;
+      background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .content {
+      padding: 16px;
+    }
+    
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      text-align: center;
+    }
+    
+    .status.codecanyon {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    
+    .status.dashboard {
+      background: rgba(139, 92, 246, 0.2);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      color: #c4b5fd;
+    }
+    
+    .status.other {
+      background: rgba(100, 116, 139, 0.2);
+      border: 1px solid rgba(100, 116, 139, 0.4);
+      color: #94a3b8;
+    }
+    
+    .status.loading {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+    }
+    
+    .btn {
+      width: 100%;
+      padding: 14px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    
+    .btn:last-child {
+      margin-bottom: 0;
+    }
+    
+    .btn-extract {
+      background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+      color: white;
+    }
+    
+    .btn-export {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      color: white;
+    }
+    
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    
+    .data-preview {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      font-size: 12px;
+    }
+    
+    .data-row:last-child {
+      border-bottom: none;
+    }
+    
+    .data-label {
+      color: #94a3b8;
+    }
+    
+    .data-value {
+      font-weight: 600;
+      color: #fff;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .data-value.highlight {
+      color: #6ee7b7;
+    }
+    
+    .success-msg {
+      text-align: center;
+      padding: 16px;
+    }
+    
+    .success-msg h3 {
+      color: #6ee7b7;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    
+    .success-msg p {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    
+    .instructions {
+      font-size: 11px;
+      color: #64748b;
+      text-align: center;
+      padding: 12px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .storage-count {
+      background: rgba(255,255,255,0.1);
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      text-align: center;
+      color: #94a3b8;
+    }
+    
+    .storage-count strong {
+      color: #6ee7b7;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 3v18h18"/>
+        <path d="M18 17V9"/>
+        <path d="M13 17V5"/>
+        <path d="M8 17v-3"/>
+      </svg>
+      CodeCanyon Tracker
+    </h1>
+  </div>
+  
+  <div class="content">
+    <div id="status" class="status loading">
+      Checking page...
+    </div>
+    
+    <div id="storageCount" class="storage-count hidden">
+      <strong id="countNum">0</strong> scripts saved in extension
+    </div>
+    
+    <!-- CodeCanyon Page: Extract Section -->
+    <div id="extractSection" class="hidden">
+      <div id="dataPreview" class="data-preview hidden">
+        <div class="data-row">
+          <span class="data-label">Title</span>
+          <span id="previewTitle" class="data-value">-</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">Author</span>
+          <span id="previewAuthor" class="data-value">-</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">Price</span>
+          <span id="previewPrice" class="data-value highlight">-</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">Sales</span>
+          <span id="previewSales" class="data-value highlight">-</span>
+        </div>
+      </div>
+      
+      <button id="extractBtn" class="btn btn-extract">
+        <span id="extractBtnText">Extract Data</span>
+      </button>
+    </div>
+    
+    <!-- Dashboard Page: Export Section -->
+    <div id="exportSection" class="hidden">
+      <div class="success-msg" id="exportSuccess" style="display:none;">
+        <h3>✓ Exported to Dashboard!</h3>
+        <p>Reload the dashboard to see your scripts</p>
+      </div>
+      
+      <button id="exportBtn" class="btn btn-export">
+        <span id="exportBtnText">Export Data to Dashboard</span>
+      </button>
+    </div>
+    
+    <!-- Other Page -->
+    <div id="otherSection" class="hidden">
+      <p style="text-align:center; color:#94a3b8; font-size:13px;">
+        Navigate to a CodeCanyon item page to extract data, or open your dashboard to export.
+      </p>
+    </div>
+  </div>
+  
+  <div class="instructions" id="instructions">
+    Collect data from CodeCanyon, then export to your dashboard.
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
