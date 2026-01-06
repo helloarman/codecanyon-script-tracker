@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CC Tracker - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        
+        :root {
+            --bg: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-hover: #f1f5f9;
+            --accent: #6cc832;
+            --accent-light: #9cee69;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --text-dim: #94a3b8;
+            --border: #e2e8f0;
+        }
+        
+        body {
+            background: var(--bg);
+            min-height: 100vh;
+            color: var(--text);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #6cc832 0%, #5ab82a 100%);
+            color: white;
+            padding: 1.25rem 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(108, 200, 50, 0.3);
+        }
+        
+        .header-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+        
+        .logo-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .logo-text p {
+            font-size: 0.75rem;
+            opacity: 0.8;
+        }
+        
+        .stats-bar {
+            display: flex;
+            gap: 2.5rem;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        
+        .stat-label {
+            font-size: 0.65rem;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+        
+        .empty-state {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 4rem 2rem;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .empty-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, rgba(108,200,50,0.1), rgba(90,184,42,0.1));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            font-size: 2.5rem;
+            color: var(--accent);
+        }
+        
+        .empty-state h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+        
+        .empty-state p {
+            color: var(--text-muted);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        .groups-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        
+        .group-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.3s;
+        }
+        
+        .group-card.expanded {
+            box-shadow: 0 8px 30px rgba(108, 200, 50, 0.15);
+        }
+        
+        .group-header {
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .group-header:hover {
+            background: var(--bg-hover);
+        }
+        
+        .group-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .group-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent), #5ab82a);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            color: white;
+        }
+        
+        .group-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+        
+        .group-count {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        
+        .group-stats {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+        
+        .group-stat {
+            text-align: center;
+        }
+        
+        .group-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .group-stat-value.sales { color: var(--success); }
+        .group-stat-value.revenue { color: var(--accent); }
+        
+        .group-stat-label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+        
+        .group-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .btn-icon:hover {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+        
+        .group-body {
+            display: none;
+            border-top: 1px solid var(--border);
+            padding: 0;
+        }
+        
+        .group-card.expanded .group-body {
+            display: block;
+        }
+        
+        .chevron {
+            font-size: 1.5rem;
+            color: var(--text-dim);
+            transition: transform 0.3s;
+        }
+        
+        .group-card.expanded .chevron {
+            transform: rotate(180deg);
+        }
+        
+        /* Comparison Table */
+        .comparison-container {
+            overflow-x: auto;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        
+        .comparison-table th {
+            background: var(--bg-hover);
+            padding: 0.75rem 1rem;
+            text-align: center;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .comparison-table th.sticky-col {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background: var(--bg-hover);
+            z-index: 10;
+            min-width: 280px;
+        }
+        
+        .comparison-table td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            text-align: center;
+            vertical-align: middle;
+        }
+        
+        .comparison-table td.sticky-col {
+            position: sticky;
+            left: 0;
+            background: var(--bg-card);
+            z-index: 5;
+            text-align: left;
+        }
+        
+        .comparison-table tr:hover td {
+            background: var(--bg-hover);
+        }
+        
+        .comparison-table tr:hover td.sticky-col {
+            background: var(--bg-hover);
+        }
+        
+        .script-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .script-rank {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            font-weight: 600;
+            width: 24px;
+        }
+        
+        .script-image {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 1px solid var(--border);
+        }
+        
+        .script-placeholder {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            background: var(--bg-hover);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+        
+        .script-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .script-title {
+            font-weight: 600;
+            color: var(--text);
+            max-width: 180px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 0.9rem;
+        }
+        
+        .script-author {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        
+        .script-meta {
+            display: flex;
+            gap: 12px;
+            margin-top: 4px;
+            font-size: 0.75rem;
+        }
+        
+        .meta-price {
+            color: #2563eb;
+            font-weight: 600;
+        }
+        
+        .meta-revenue {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        
+        .history-cell {
+            font-weight: 500;
+            min-width: 90px;
+            padding: 0.5rem !important;
+        }
+        
+        .cell-sales {
+            color: var(--success);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        
+        .cell-price {
+            color: #2563eb;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-top: 2px;
+        }
+        
+        .history-cell.empty {
+            color: var(--text-dim);
+            font-weight: 400;
+        }
+        
+        .date-col {
+            min-width: 110px;
+            font-size: 0.65rem;
+        }
+        
+        /* Chart Section */
+        .chart-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .chart-header h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .chart-header h3 i {
+            color: var(--accent);
+        }
+        
+        .period-buttons {
+            display: flex;
+            gap: 6px;
+        }
+        
+        .period-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-card);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .period-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text);
+        }
+        
+        .period-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        
+        .chart-container {
+            background: var(--bg-hover);
+            border-radius: 8px;
+            padding: 0.75rem;
+            min-height: 200px;
+        }
+        
+        .chart-container canvas {
+            width: 100% !important;
+            height: 200px !important;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        
+        .chart-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+        
+        .chart-box h4 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .chart-box h4 i {
+            color: var(--accent);
+        }
+        
+        .chart-legend {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+        
+        .legend-color.sales {
+            background: var(--accent);
+        }
+        
+        .legend-color.price {
+            background: #2563eb;
+        }
+        
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem;
+        }
+        
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(108, 200, 50, 0.2);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            margin-top: 4rem;
+            background: var(--bg-card);
+        }
+        
+        @media (max-width: 768px) {
+            .stats-bar { display: none; }
+            .group-stats { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <div class="logo-icon"><i class="ri-bar-chart-box-line"></i></div>
+                <div class="logo-text">
+                    <h1>CC Tracker</h1>
+                    <p>CodeCanyon Analytics Dashboard</p>
+                </div>
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalGroups">0</div>
+                    <div class="stat-label">Groups</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalScripts">0</div>
+                    <div class="stat-label">Scripts</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalSales">0</div>
+                    <div class="stat-label">Total Sales</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalRevenue">$0</div>
+                    <div class="stat-label">Est. Revenue</div>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <main class="main" id="main">
+        <div class="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 1rem; color: var(--text-muted);">Loading data...</p>
+        </div>
+    </main>
+    
+    <footer class="footer">
+        CC Tracker — Track CodeCanyon scripts sales & revenue over time
+    </footer>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

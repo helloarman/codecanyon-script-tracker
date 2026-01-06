@@ -1,244 +1,314 @@
 // DOM Elements
-const statusEl = document.getElementById('status');
-const storageCountEl = document.getElementById('storageCount');
-const countNumEl = document.getElementById('countNum');
+const pageStatus = document.getElementById('pageStatus');
+const newGroupName = document.getElementById('newGroupName');
+const addGroupBtn = document.getElementById('addGroupBtn');
+const groupsList = document.getElementById('groupsList');
+const openDashboardBtn = document.getElementById('openDashboardBtn');
 
-const extractSection = document.getElementById('extractSection');
-const extractBtn = document.getElementById('extractBtn');
-const extractBtnText = document.getElementById('extractBtnText');
-const dataPreview = document.getElementById('dataPreview');
+// Dashboard URL - open the index.html from inside the extension
+const DASHBOARD_URL = chrome.runtime.getURL('index.html');
 
-const exportSection = document.getElementById('exportSection');
-const exportBtn = document.getElementById('exportBtn');
-const exportBtnText = document.getElementById('exportBtnText');
-const exportSuccess = document.getElementById('exportSuccess');
+let groups = [];
+let pageType = 'other'; // 'dashboard' or 'other'
+let expandedGroupId = null;
 
-const otherSection = document.getElementById('otherSection');
-const instructions = document.getElementById('instructions');
-
-let currentTabId = null;
-let pageType = 'other'; // 'codecanyon', 'dashboard', 'other'
-
-// Update storage count display
-async function updateStorageCount() {
-    try {
-        const data = await chrome.storage.local.get('cc_scripts');
-        const scripts = data.cc_scripts || [];
-        countNumEl.textContent = scripts.length;
-        storageCountEl.classList.toggle('hidden', scripts.length === 0);
-    } catch (err) {
-        console.error('Error getting storage count:', err);
-    }
+// Initialize
+async function init() {
+    await detectPageType();
+    await loadGroups();
+    renderGroups();
 }
 
-// Check what type of page we're on
-async function checkCurrentTab() {
+// Detect if we're on the dashboard page
+async function detectPageType() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        currentTabId = tab.id;
         const url = tab.url || '';
 
-        if (url.includes('codecanyon.net/item/')) {
-            pageType = 'codecanyon';
-            statusEl.className = 'status codecanyon';
-            statusEl.textContent = '✓ CodeCanyon item detected';
-            extractSection.classList.remove('hidden');
-            exportSection.classList.add('hidden');
-            otherSection.classList.add('hidden');
-            instructions.textContent = 'Click to extract and save this item\'s data.';
-
-        } else if (url.includes('codecanyon-scraper') || url.includes('index.html')) {
+        if (url.includes('codecanyon-scraper') || url.includes('index.html')) {
             pageType = 'dashboard';
-            statusEl.className = 'status dashboard';
-            statusEl.textContent = '✓ Dashboard page detected';
-            extractSection.classList.add('hidden');
-            exportSection.classList.remove('hidden');
-            otherSection.classList.add('hidden');
-            instructions.textContent = 'Export your collected data to the dashboard.';
-
+            pageStatus.className = 'status-badge dashboard';
+            pageStatus.textContent = 'Dashboard';
+        } else if (url.includes('codecanyon.net')) {
+            pageType = 'codecanyon';
+            pageStatus.className = 'status-badge codecanyon';
+            pageStatus.textContent = 'CodeCanyon';
         } else {
             pageType = 'other';
-            statusEl.className = 'status other';
-            statusEl.textContent = 'ℹ Navigate to CodeCanyon or Dashboard';
-            extractSection.classList.add('hidden');
-            exportSection.classList.add('hidden');
-            otherSection.classList.remove('hidden');
-            instructions.textContent = 'Go to a CodeCanyon item page or your dashboard.';
+            pageStatus.className = 'status-badge';
+            pageStatus.textContent = 'Ready';
         }
-
-        await updateStorageCount();
-
     } catch (err) {
-        console.error('Error checking tab:', err);
-        statusEl.className = 'status other';
-        statusEl.textContent = '✗ Unable to check page';
+        console.error('Error detecting page:', err);
     }
 }
 
-// Extract data from CodeCanyon page
-async function extractData() {
-    if (!currentTabId) return;
+// Load groups from storage
+async function loadGroups() {
+    const data = await chrome.storage.local.get('cc_groups');
+    groups = data.cc_groups || [];
+}
 
-    extractBtnText.innerHTML = '<span class="spinner"></span> Extracting...';
-    extractBtn.disabled = true;
+// Save groups to storage
+async function saveGroups() {
+    await chrome.storage.local.set({ cc_groups: groups });
+}
+
+// Add new group
+async function addGroup() {
+    const name = newGroupName.value.trim();
+    if (!name) return;
+
+    const newGroup = {
+        id: 'group_' + Date.now(),
+        name: name,
+        links: [],
+        scripts: []
+    };
+
+    groups.push(newGroup);
+    await saveGroups();
+    newGroupName.value = '';
+
+    // Auto-expand the new group so user can add links immediately
+    expandedGroupId = newGroup.id;
+
+    renderGroups();
+}
+
+// Delete group
+async function deleteGroup(groupId) {
+    if (!confirm('Delete this group and all its data?')) return;
+    groups = groups.filter(g => g.id !== groupId);
+    await saveGroups();
+    renderGroups();
+}
+
+// Add link to group
+async function addLinkToGroup(groupId, url) {
+    if (!url || !url.includes('codecanyon.net')) {
+        alert('Please enter a valid CodeCanyon URL');
+        return;
+    }
+
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+
+    if (group.links.includes(url)) {
+        alert('This URL is already in the group');
+        return;
+    }
+
+    group.links.push(url);
+    await saveGroups();
+    renderGroups();
+}
+
+// Remove link from group
+async function removeLinkFromGroup(groupId, url) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+
+    group.links = group.links.filter(l => l !== url);
+    await saveGroups();
+    renderGroups();
+}
+
+// Scrape all links in a group
+async function scrapeGroup(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group || group.links.length === 0) {
+        alert('No links to scrape in this group');
+        return;
+    }
+
+    const scrapeBtn = document.querySelector(`[data-scrape-btn="${groupId}"]`);
+    const progressContainer = document.querySelector(`[data-progress="${groupId}"]`);
+    const progressBar = progressContainer.querySelector('.fill');
+    const progressText = progressContainer.querySelector('.progress-text');
+
+    scrapeBtn.disabled = true;
+    scrapeBtn.innerHTML = '<span class="spinner"></span> Scraping...';
+    progressContainer.classList.remove('hidden');
 
     try {
-        const results = await chrome.scripting.executeScript({
-            target: { tabId: currentTabId },
-            func: scrapeCodeCanyon
-        });
+        const total = group.links.length;
+        let completed = 0;
 
-        const data = results[0]?.result;
+        for (const url of group.links) {
+            progressText.textContent = `Scraping ${completed + 1} of ${total}...`;
+            progressBar.style.width = `${(completed / total) * 100}%`;
 
-        if (data && data.title) {
-            // Show preview
-            document.getElementById('previewTitle').textContent = data.title;
-            document.getElementById('previewAuthor').textContent = data.author;
-            document.getElementById('previewPrice').textContent = '$' + data.price;
-            document.getElementById('previewSales').textContent = data.sales + ' sales';
-            dataPreview.classList.remove('hidden');
+            // Open tab, scrape, close
+            try {
+                const tab = await chrome.tabs.create({ url, active: false });
 
-            // Save to chrome storage
-            const savedScripts = await chrome.storage.local.get('cc_scripts');
-            const scripts = savedScripts.cc_scripts || [];
-
-            const existingIndex = scripts.findIndex(s => s.url === data.url);
-
-            if (existingIndex >= 0) {
-                scripts[existingIndex].history.push({
-                    date: new Date().toISOString(),
-                    sales: data.sales,
-                    price: data.price
+                // Wait for load
+                await new Promise(resolve => {
+                    const listener = (tabId, info) => {
+                        if (tabId === tab.id && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+                            resolve();
+                        }
+                    };
+                    chrome.tabs.onUpdated.addListener(listener);
+                    setTimeout(() => {
+                        chrome.tabs.onUpdated.removeListener(listener);
+                        resolve();
+                    }, 20000);
                 });
-                scripts[existingIndex].title = data.title;
-                scripts[existingIndex].image = data.image;
-            } else {
-                scripts.unshift({
-                    id: Date.now().toString(),
-                    url: data.url,
-                    title: data.title,
-                    image: data.image,
-                    author: data.author,
-                    history: [{
-                        date: new Date().toISOString(),
-                        sales: data.sales,
-                        price: data.price
-                    }]
+
+                // Extra wait for dynamic content
+                await new Promise(r => setTimeout(r, 2000));
+
+                // Scrape
+                const results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: scrapeCodeCanyon
                 });
+
+                const data = results[0]?.result;
+
+                if (data && data.title) {
+                    // Add or update script in group
+                    const existingIdx = group.scripts.findIndex(s => s.url === data.url || s.url === url);
+
+                    if (existingIdx >= 0) {
+                        group.scripts[existingIdx].title = data.title;
+                        group.scripts[existingIdx].image = data.image;
+                        group.scripts[existingIdx].author = data.author;
+                        group.scripts[existingIdx].history.push({
+                            date: new Date().toISOString(),
+                            sales: data.sales,
+                            price: data.price
+                        });
+                    } else {
+                        group.scripts.push({
+                            id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5),
+                            url: data.url,
+                            title: data.title,
+                            author: data.author,
+                            price: data.price,
+                            sales: data.sales,
+                            image: data.image,
+                            history: [{
+                                date: new Date().toISOString(),
+                                sales: data.sales,
+                                price: data.price
+                            }]
+                        });
+                    }
+                }
+
+                // Close tab
+                await chrome.tabs.remove(tab.id);
+
+            } catch (err) {
+                console.error('Error scraping', url, err);
             }
 
-            await chrome.storage.local.set({ cc_scripts: scripts });
-            await updateStorageCount();
-
-            statusEl.textContent = existingIndex >= 0 ? '✓ Data updated!' : '✓ Data saved!';
-            extractBtnText.textContent = '✓ Saved!';
-
-            setTimeout(() => {
-                extractBtnText.textContent = 'Extract Again';
-                extractBtn.disabled = false;
-            }, 1500);
-
-        } else {
-            throw new Error('Could not extract data from page');
+            completed++;
+            progressBar.style.width = `${(completed / total) * 100}%`;
         }
 
-    } catch (err) {
-        console.error('Extraction error:', err);
-        statusEl.className = 'status other';
-        statusEl.textContent = '✗ ' + (err.message || 'Extraction failed');
-        extractBtnText.textContent = 'Try Again';
-        extractBtn.disabled = false;
-    }
-}
-
-// Export data to dashboard page
-async function exportToDashboard() {
-    if (!currentTabId) return;
-
-    exportBtnText.innerHTML = '<span class="spinner"></span> Exporting...';
-    exportBtn.disabled = true;
-
-    try {
-        // Get scripts from extension storage
-        const data = await chrome.storage.local.get('cc_scripts');
-        const scripts = data.cc_scripts || [];
-
-        if (scripts.length === 0) {
-            statusEl.textContent = 'ℹ No scripts to export. Extract some first!';
-            exportBtnText.textContent = 'No Data to Export';
-            setTimeout(() => {
-                exportBtnText.textContent = 'Export Data to Dashboard';
-                exportBtn.disabled = false;
-            }, 2000);
-            return;
-        }
-
-        // Inject script to write to page's localStorage
-        await chrome.scripting.executeScript({
-            target: { tabId: currentTabId },
-            func: injectDataToDashboard,
-            args: [scripts]
-        });
-
-        statusEl.textContent = '✓ Exported ' + scripts.length + ' script(s)!';
-        exportSuccess.style.display = 'block';
-        exportBtnText.textContent = '✓ Exported!';
+        await saveGroups();
+        progressText.textContent = `Done! Scraped ${completed} items`;
 
         setTimeout(() => {
-            exportBtnText.textContent = 'Export Again';
-            exportBtn.disabled = false;
+            progressContainer.classList.add('hidden');
+            renderGroups();
         }, 2000);
 
     } catch (err) {
-        console.error('Export error:', err);
-        statusEl.className = 'status other';
-        statusEl.textContent = '✗ ' + (err.message || 'Export failed');
-        exportBtnText.textContent = 'Try Again';
-        exportBtn.disabled = false;
+        console.error('Batch scrape error:', err);
+        alert('Error during scraping: ' + err.message);
+    }
+
+    scrapeBtn.disabled = false;
+    scrapeBtn.innerHTML = '⚡ Scrape All';
+}
+
+// Sync group to dashboard
+async function syncToDashboard(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group || group.scripts.length === 0) {
+        alert('No scraped data to sync. Scrape some links first!');
+        return;
+    }
+
+    const syncBtn = document.querySelector(`[data-sync-btn="${groupId}"]`);
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = '<span class="spinner"></span> Syncing...';
+
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: injectGroupToDashboard,
+            args: [group.name, group.scripts]
+        });
+
+        syncBtn.innerHTML = '✓ Synced!';
+
+        setTimeout(() => {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = '📤 Sync to Dashboard';
+        }, 2000);
+
+    } catch (err) {
+        console.error('Sync error:', err);
+        alert('Error syncing: ' + err.message);
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = '📤 Sync to Dashboard';
     }
 }
 
-// Function that runs on the dashboard page to inject data
-function injectDataToDashboard(scripts) {
+// Function injected to dashboard
+function injectGroupToDashboard(groupName, scripts) {
     try {
-        // Get existing scripts from dashboard's localStorage
-        const existingStr = localStorage.getItem('cc_tracker_scripts');
-        const existing = existingStr ? JSON.parse(existingStr) : [];
+        // Get existing data
+        const existingStr = localStorage.getItem('cc_tracker_groups');
+        const existingGroups = existingStr ? JSON.parse(existingStr) : [];
+
+        // Find or create group
+        let groupIdx = existingGroups.findIndex(g => g.name === groupName);
+        if (groupIdx === -1) {
+            existingGroups.push({ name: groupName, scripts: [] });
+            groupIdx = existingGroups.length - 1;
+        }
+
+        const group = existingGroups[groupIdx];
 
         // Merge scripts
-        const merged = [...existing];
-
         scripts.forEach(newScript => {
-            const existingIdx = merged.findIndex(s => s.url === newScript.url);
+            const existingIdx = group.scripts.findIndex(s => s.url === newScript.url);
             if (existingIdx >= 0) {
                 // Merge history
-                const existingDates = new Set(merged[existingIdx].history.map(h => h.date));
+                const existingDates = new Set(group.scripts[existingIdx].history.map(h => h.date));
                 const newHistory = newScript.history.filter(h => !existingDates.has(h.date));
-                merged[existingIdx].history = [...merged[existingIdx].history, ...newHistory];
-                merged[existingIdx].title = newScript.title;
-                merged[existingIdx].image = newScript.image;
+                group.scripts[existingIdx].history.push(...newHistory);
+                group.scripts[existingIdx].title = newScript.title;
+                group.scripts[existingIdx].image = newScript.image;
             } else {
-                merged.unshift(newScript);
+                group.scripts.push(newScript);
             }
         });
 
-        // Save back to localStorage
-        localStorage.setItem('cc_tracker_scripts', JSON.stringify(merged));
+        existingGroups[groupIdx] = group;
+        localStorage.setItem('cc_tracker_groups', JSON.stringify(existingGroups));
 
-        // Trigger a storage event so React can pick it up
-        window.dispatchEvent(new Event('storage'));
-
-        // Also reload the page to show new data
+        // Reload page
         location.reload();
 
-        return { success: true, count: scripts.length };
+        return { success: true };
     } catch (err) {
         console.error('Inject error:', err);
         return { success: false, error: err.message };
     }
 }
 
-// Function that runs on CodeCanyon page to scrape data
+// Scraping function
 function scrapeCodeCanyon() {
     try {
         const titleEl = document.querySelector('h1.t-heading');
@@ -257,15 +327,12 @@ function scrapeCodeCanyon() {
         }
 
         if (!price) {
-            const priceSelectors = ['.js-adi__item-sale-price', '.adi__item-sale-price', '.js-purchase-price'];
+            const priceSelectors = ['.js-adi__item-sale-price', '.adi__item-sale-price'];
             for (const sel of priceSelectors) {
                 const el = document.querySelector(sel);
                 if (el) {
                     const cleaned = el.innerText.replace(/[^0-9.]/g, '');
-                    if (cleaned && parseFloat(cleaned) > 0) {
-                        price = parseFloat(cleaned);
-                        break;
-                    }
+                    if (cleaned) { price = parseFloat(cleaned); break; }
                 }
             }
         }
@@ -275,12 +342,10 @@ function scrapeCodeCanyon() {
         if (salesWrapper) {
             const strongTag = salesWrapper.querySelector('strong');
             if (strongTag) {
-                const salesText = strongTag.innerText.replace(/[^0-9]/g, '');
-                if (salesText) sales = parseInt(salesText, 10);
+                sales = parseInt(strongTag.innerText.replace(/[^0-9]/g, ''), 10) || 0;
             }
             if (!sales) {
-                const salesText = salesWrapper.innerText.replace(/[^0-9]/g, '');
-                if (salesText) sales = parseInt(salesText, 10);
+                sales = parseInt(salesWrapper.innerText.replace(/[^0-9]/g, ''), 10) || 0;
             }
         }
 
@@ -290,23 +355,195 @@ function scrapeCodeCanyon() {
         const authorEl = document.querySelector('a.js-by-author');
         const author = authorEl ? authorEl.innerText.trim() : 'Unknown';
 
-        return {
-            title,
-            price,
-            sales,
-            image,
-            author,
-            url: window.location.href
-        };
+        return { title, price, sales, image, author, url: window.location.href };
     } catch (err) {
-        console.error('Scrape error:', err);
         return null;
     }
 }
 
-// Event listeners
-extractBtn.addEventListener('click', extractData);
-exportBtn.addEventListener('click', exportToDashboard);
+// Render groups
+function renderGroups() {
+    if (groups.length === 0) {
+        groupsList.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+        </svg>
+        <p>No groups yet. Create one above!</p>
+      </div>
+    `;
+        return;
+    }
+
+    groupsList.innerHTML = groups.map(group => `
+    <div class="group-card ${expandedGroupId === group.id ? 'expanded' : ''}" data-group-id="${group.id}">
+      <div class="group-header">
+        <span class="group-name">
+          <span class="chevron">▶</span>
+          ${escapeHtml(group.name)}
+        </span>
+        <div class="group-stats">
+          <span>🔗 ${group.links.length}</span>
+          <span>📦 ${group.scripts.length}</span>
+        </div>
+      </div>
+      <div class="group-body">
+        <!-- Add Link -->
+        <div class="add-link-form">
+          <input type="url" placeholder="Paste CodeCanyon URL" id="linkInput_${group.id}">
+          <button class="btn btn-primary btn-sm" data-action="add-link">+</button>
+        </div>
+        
+        <!-- Links -->
+        ${group.links.length > 0 ? `
+          <div class="link-list">
+            ${group.links.map(link => `
+              <div class="link-item">
+                <a href="${link}" target="_blank" title="${link}">${getLinkTitle(link)}</a>
+                <span class="remove-link" data-action="remove-link" data-url="${escapeHtml(link)}">✕</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<p style="color:#64748b;font-size:11px;margin-bottom:10px;">No links added yet</p>'}
+        
+        <!-- Progress -->
+        <div class="hidden" data-progress="${group.id}">
+          <p class="progress-text">Preparing...</p>
+          <div class="progress-bar"><div class="fill" style="width:0%"></div></div>
+        </div>
+        
+        <!-- Scraped Scripts -->
+        ${group.scripts.length > 0 ? `
+          <div class="section-title" style="margin-top:10px;">Scraped Data (${group.scripts.length})</div>
+          <div class="script-list">
+            ${group.scripts.slice(0, 5).map(script => `
+              <div class="script-item">
+                ${script.image ? `<img src="${script.image}" alt="">` : '<div style="width:32px;height:32px;background:#334155;border-radius:4px;"></div>'}
+                <div class="script-info">
+                  <div class="script-title">${escapeHtml(script.title)}</div>
+                  <div class="script-stats">
+                    <span class="sales">${script.sales} sales</span> · 
+                    <span class="price">$${script.price}</span>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+            ${group.scripts.length > 5 ? `<p style="color:#64748b;font-size:10px;text-align:center;">+${group.scripts.length - 5} more</p>` : ''}
+          </div>
+        ` : ''}
+        
+        <!-- Actions -->
+        <div class="group-actions">
+          <button class="btn btn-success btn-sm" data-scrape-btn="${group.id}" data-action="scrape" ${group.links.length === 0 ? 'disabled' : ''}>
+            ⚡ Scrape All
+          </button>
+          ${pageType === 'dashboard' ? `
+            <button class="btn btn-primary btn-sm" data-sync-btn="${group.id}" data-action="sync" ${group.scripts.length === 0 ? 'disabled' : ''}>
+              📤 Sync to Dashboard
+            </button>
+          ` : ''}
+          <button class="btn btn-danger btn-sm" data-action="delete">🗑</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Toggle group expand/collapse
+function toggleGroup(groupId) {
+    expandedGroupId = expandedGroupId === groupId ? null : groupId;
+    renderGroups();
+}
+
+// Handle add link
+function handleAddLink(groupId) {
+    const input = document.getElementById(`linkInput_${groupId}`);
+    if (input) {
+        addLinkToGroup(groupId, input.value.trim());
+        input.value = '';
+    }
+}
+
+// Handle remove link
+function handleRemoveLink(groupId, url) {
+    removeLinkFromGroup(groupId, url);
+}
+
+// Extract item name from URL
+function getLinkTitle(url) {
+    try {
+        const match = url.match(/\/item\/([^\/]+)/);
+        if (match) {
+            return match[1].replace(/-/g, ' ').replace(/\d+$/, '').trim();
+        }
+    } catch (e) { }
+    return url;
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Event Listeners
+addGroupBtn.addEventListener('click', addGroup);
+newGroupName.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addGroup();
+});
+
+// Open dashboard button
+openDashboardBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: DASHBOARD_URL });
+});
+
+// Event delegation for dynamically created elements
+groupsList.addEventListener('click', (e) => {
+    const target = e.target;
+
+    // Find the closest button or clickable element
+    const groupHeader = target.closest('.group-header');
+    const addLinkBtn = target.closest('[data-action="add-link"]');
+    const removeLinkBtn = target.closest('[data-action="remove-link"]');
+    const scrapeBtn = target.closest('[data-action="scrape"]');
+    const syncBtn = target.closest('[data-action="sync"]');
+    const deleteBtn = target.closest('[data-action="delete"]');
+
+    // Get parent group card
+    const groupCard = target.closest('.group-card');
+    const groupId = groupCard?.dataset.groupId;
+
+    if (groupHeader && groupId) {
+        // Don't toggle if clicking on a button inside the header
+        if (!target.closest('button')) {
+            toggleGroup(groupId);
+        }
+    }
+
+    if (addLinkBtn && groupId) {
+        handleAddLink(groupId);
+    }
+
+    if (removeLinkBtn) {
+        const url = removeLinkBtn.dataset.url;
+        if (url && groupId) {
+            removeLinkFromGroup(groupId, url);
+        }
+    }
+
+    if (scrapeBtn && groupId) {
+        scrapeGroup(groupId);
+    }
+
+    if (syncBtn && groupId) {
+        syncToDashboard(groupId);
+    }
+
+    if (deleteBtn && groupId) {
+        deleteGroup(groupId);
+    }
+});
 
 // Initialize
-checkCurrentTab();
+init();
